@@ -33,6 +33,7 @@ type Config struct {
 	FixedCIDR                   string
 	FixedCIDRv6                 string
 	DisableIPv4                 bool
+	NeighbourProxy6             bool
 	InterContainerCommunication bool
 	GraphDriver                 string
 	GraphOptions                []string
@@ -64,6 +65,7 @@ func (config *Config) InstallFlags() {
 	flag.StringVar(&config.BridgeIface, []string{"b", "-bridge"}, "", "Attach containers to a network bridge")
 	flag.StringVar(&config.FixedCIDR, []string{"-fixed-cidr"}, "", "IPv4 subnet for fixed IPs")
 	flag.StringVar(&config.FixedCIDRv6, []string{"-fixed-cidr-v6"}, "", "IPv6 subnet for fixed IPs")
+	flag.BoolVar(&config.NeighbourProxy6, []string{"-neighbour-proxy-v6"}, false, "Enable IPv6 neighbour proxy for fixed IPs")
 	flag.BoolVar(&config.InterContainerCommunication, []string{"#icc", "-icc"}, true, "Enable inter-container communication")
 	flag.StringVar(&config.GraphDriver, []string{"s", "-storage-driver"}, "", "Storage driver to use")
 	flag.StringVar(&config.ExecDriver, []string{"e", "-exec-driver"}, "native", "Exec driver to use")

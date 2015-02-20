@@ -79,6 +79,7 @@ var (
 	bridgeIPv4Network *net.IPNet
 	bridgeIPv6Addr    net.IP
 	globalIPv6Network *net.IPNet
+	neighbourProxy6   bool
 
 	defaultBindingIP  = net.ParseIP("0.0.0.0")
 	currentInterfaces = ifaces{c: make(map[string]*networkInterface)}
@@ -106,6 +107,7 @@ func InitDriver(job *engine.Job) engine.Status {
 	}
 
 	enableIPv4 = !job.GetenvBool("DisableIPv4")
+	neighbourProxy6 = job.GetenvBool("NeighbourProxy6")
 	bridgeIface = job.Getenv("BridgeIface")
 	usingDefaultBridge := false
 	if bridgeIface == "" {
@@ -587,6 +589,14 @@ func Allocate(job *engine.Job) engine.Status {
 			return job.Error(err)
 		}
 		log.Infof("Allocated IPv6 %s", globalIPv6)
+
+		if neighbourProxy6 {
+			iface, err := networkdriver.GetDefaultRouteIfaceV6()
+			if err != nil {
+				return job.Error(err)
+			}
+			netlink.NeighbourAddProxy(iface, globalIPv6)
+		}
 	}
 
 	// if linklocal IPv6
@@ -640,6 +650,13 @@ func Release(job *engine.Job) engine.Status {
 	if globalIPv6Network != nil {
 		if err := ipallocator.ReleaseIP(globalIPv6Network, containerInterface.IPv6); err != nil {
 			log.Infof("Unable to release IPv6 %s", err)
+		}
+		if neighbourProxy6 {
+			iface, err := networkdriver.GetDefaultRouteIfaceV6()
+			if err != nil {
+				return job.Error(err)
+			}
+			netlink.NeighbourDelProxy(iface, containerInterface.IPv6)
 		}
 	}
 	return engine.StatusOK

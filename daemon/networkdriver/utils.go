@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"syscall"
 
 	"github.com/docker/libcontainer/netlink"
 )
@@ -109,6 +110,19 @@ func GetIfaceAddr(name string, enableIPv4 bool) (net.Addr, []net.Addr, error) {
 
 func GetDefaultRouteIface() (*net.Interface, error) {
 	rs, err := networkGetRoutesFct()
+	if err != nil {
+		return nil, fmt.Errorf("unable to get routes: %v", err)
+	}
+	for _, r := range rs {
+		if r.Default {
+			return r.Iface, nil
+		}
+	}
+	return nil, ErrNoDefaultRoute
+}
+
+func GetDefaultRouteIfaceV6() (*net.Interface, error) {
+	rs, err := netlink.NetworkGetRoutesFamily(syscall.AF_INET6)
 	if err != nil {
 		return nil, fmt.Errorf("unable to get routes: %v", err)
 	}

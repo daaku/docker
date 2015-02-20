@@ -26,6 +26,9 @@ const (
 	SIOC_BRADDBR      = 0x89a0
 	SIOC_BRDELBR      = 0x89a1
 	SIOC_BRADDIF      = 0x89a2
+	NUD_PERMANENT     = 0x80
+	NTF_PROXY         = 0x08
+	NDA_DST           = 1
 )
 
 const (
@@ -926,6 +929,10 @@ func NetworkLinkAddIp(iface *net.Interface, ip net.IP, ipNet *net.IPNet) error {
 // Returns an array of IPNet for all the currently routed subnets on ipv4
 // This is similar to the first column of "ip route" output
 func NetworkGetRoutes() ([]Route, error) {
+	return NetworkGetRoutesFamily(syscall.AF_INET)
+}
+
+func NetworkGetRoutesFamily(family uint8) ([]Route, error) {
 	s, err := getNetlinkSocket()
 	if err != nil {
 		return nil, err
@@ -979,7 +986,7 @@ outer:
 				continue
 			}
 
-			if msg.Family != syscall.AF_INET {
+			if msg.Family != family {
 				// Ignore non-ipv4 routes
 				continue
 			}
@@ -1296,4 +1303,73 @@ func ChangeName(iface *net.Interface, newName string) error {
 	}
 
 	return nil
+}
+
+type ndmsg struct {
+	family  uint8
+	ifIndex uint32
+	state   uint16
+	flags   uint8
+	typ     uint8
+}
+
+const ndmsgLen = 12
+
+func (m *ndmsg) Len() int { return ndmsgLen }
+
+func (m *ndmsg) ToWireFormat() []byte {
+	var out [ndmsgLen]byte
+	out[0] = byte(m.family)
+	// 3 bytes padding
+	native.PutUint32(out[4:8], m.ifIndex)
+	native.PutUint16(out[8:10], m.state)
+	out[10] = byte(m.flags)
+	out[11] = byte(m.typ)
+	return out[:]
+}
+
+// NeighbourAddProxy adds an IPv6 neighbour proxy.
+func NeighbourAddProxy(iface *net.Interface, ip net.IP) error {
+	s, err := getNetlinkSocket()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	wb := newNetlinkRequest(syscall.RTM_NEWNEIGH, syscall.NLM_F_CREATE|syscall.NLM_F_EXCL|syscall.NLM_F_ACK)
+	wb.AddData(&ndmsg{
+		family:  uint8(getIpFamily(ip)),
+		ifIndex: uint32(iface.Index),
+		state:   NUD_PERMANENT,
+		flags:   NTF_PROXY,
+	})
+	wb.AddData(newRtAttr(NDA_DST, ip.To16()))
+
+	if err := s.Send(wb); err != nil {
+		return err
+	}
+	return s.HandleAck(wb.Seq)
+}
+
+// NeighbourDelProxy deletes an IPv6 neighbour proxy.
+func NeighbourDelProxy(iface *net.Interface, ip net.IP) error {
+	s, err := getNetlinkSocket()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	wb := newNetlinkRequest(syscall.RTM_DELNEIGH, syscall.NLM_F_ACK)
+	wb.AddData(&ndmsg{
+		family:  uint8(getIpFamily(ip)),
+		ifIndex: uint32(iface.Index),
+		state:   NUD_PERMANENT,
+		flags:   NTF_PROXY,
+	})
+	wb.AddData(newRtAttr(NDA_DST, ip.To16()))
+
+	if err := s.Send(wb); err != nil {
+		return err
+	}
+	return s.HandleAck(wb.Seq)
 }
